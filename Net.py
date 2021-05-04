@@ -62,7 +62,6 @@ class TenseDecoder(nn.Module):
 
         return (output, hidden)
 
-
     def _hidden(self, condition: torch.Tensor, latent: torch.Tensor) -> torch.Tensor:
         repeat = self.lstm.num_layers * (2 if self.lstm.bidirectional else 1)
 
