@@ -2,6 +2,8 @@ from typing import Callable
 import torch
 from torch.utils.data import Dataset
 
+import Constant
+
 
 class Word2Index(object):
     def __init__(self, max_length: int) -> None:
@@ -10,11 +12,10 @@ class Word2Index(object):
     def __call__(self, sample: str) -> torch.Tensor:
         result = []
 
-        for c in sample:
-            result.append(ord(c.lower()) - ord('a'))
-
-        while len(result) < self.max_length:
-            result.append(0)
+        result += [Constant.SOS_TOKEN]
+        result += [ord(c) - ord('a') + Constant.ALP_TOKEN for c in sample.lower()]
+        result += [Constant.EOS_TOKEN]
+        result += ([Constant.PAD_TOKEN] * (self.max_length - len(sample)))
 
         return torch.tensor(result)
 
@@ -32,7 +33,7 @@ class TenseDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, index: int) -> tuple[str, int]:
+    def __getitem__(self, index: int) -> tuple:
         row = index % len(self.data)
         col = index // len(self.data)
 
