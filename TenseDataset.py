@@ -21,4 +21,7 @@ class TenseDataset(Dataset):
 
         word = self.data[row][col]
 
+        if self.transform:
+            word = self.transform(word)
+
         return (word, col)
