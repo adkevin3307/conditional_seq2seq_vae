@@ -23,6 +23,16 @@ def belu4(predict: torch.Tensor, truth: torch.Tensor) -> float:
     return (score / len(y_truth))
 
 
+def generate_gaussian_data(n: int, shape: int) -> tuple:
+    latents = torch.empty(shape, n, Constant.LATENT_SIZE)
+    latents = latents.normal_(mean=0, std=1)
+    latents = torch.repeat_interleave(latents, Constant.CONDITION_CATEGORY, dim=1)
+
+    tenses = torch.tensor(list(range(4))).repeat(n)
+
+    return (latents, tenses)
+
+
 def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader: Any, annealing: str, path: str) -> None:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -132,7 +142,7 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader:
             kld_alpha = min(kld_alpha + (1.0 / (period / 2)), min((epoch + 1) % period, 1.0))
 
 
-def test(encoder_weight: str, decoder_weight: str, test_loader: Any) -> None:
+def evaluate_belu4(encoder_weight: str, decoder_weight: str, test_loader: Any) -> None:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     encoder = torch.load(encoder_weight)
@@ -140,6 +150,11 @@ def test(encoder_weight: str, decoder_weight: str, test_loader: Any) -> None:
 
     encoder.eval()
     decoder.eval()
+
+    accuracy = 0
+    belu4_score = 0.0
+
+    print('=' * 50)
 
     with torch.no_grad():
         for x_test, y_test in test_loader:
@@ -161,6 +176,11 @@ def test(encoder_weight: str, decoder_weight: str, test_loader: Any) -> None:
             predict = torch.cat(predict)
             predict = torch.argmax(predict, dim=-1).transpose(0, 1)
 
+            accuracy += sum(np.array(Index2Word()(output_word)) == np.array(Index2Word()(predict)))
+
+            temp_belu4_score = belu4(predict, output_word)
+            belu4_score += temp_belu4_score
+
             input = Index2Word()(input_word)
             target = Index2Word()(output_word)
             predict = Index2Word()(predict)
@@ -169,3 +189,69 @@ def test(encoder_weight: str, decoder_weight: str, test_loader: Any) -> None:
                 print(f'input  : {input[i]}')
                 print(f'target : {target[i]}')
                 print(f'predict: {predict[i]}')
+
+                if i < (latent.shape[1] - 1):
+                    print()
+
+    accuracy /= len(test_loader.dataset)
+    belu4_score /= len(test_loader)
+
+    print('-' * 50)
+
+    print(f'accuracy: {accuracy:.3f}, belu4: {belu4_score:.3f}')
+
+    print('=' * 50)
+
+
+def evaluate_gaussian(encoder_weight: str, decoder_weight: str, dataset: str, shape: int) -> None:
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    encoder = torch.load(encoder_weight)
+    decoder = torch.load(decoder_weight)
+
+    encoder.eval()
+    decoder.eval()
+
+    latents, tenses = generate_gaussian_data(100, shape)
+    latents, tenses = latents.to(device), tenses.to(device)
+
+    input = torch.tensor([[1]]).repeat(1, latents.shape[1]).to(device)
+    hidden = (tenses, latents)
+
+    predict = []
+
+    for _ in range(latents.shape[1]):
+        output, hidden = decoder(input, hidden)
+        predict.append(output)
+
+        input = torch.argmax(output, dim=-1).type(torch.long)
+
+    predict = torch.cat(predict)
+    predict = torch.argmax(predict, dim=-1).transpose(0, 1)
+
+    predict = Index2Word()(predict)
+
+    predict = [predict[i: (i + 4)] for i in range(len(predict) // 4)]
+
+    print('=' * 50)
+
+    words = []
+    with open(dataset, 'r') as txt_file:
+        for line in txt_file:
+            words.append(line.split())
+
+    score = 0
+    for word in words:
+        for y in predict:
+            if word == y:
+                print(word)
+
+                score += 1
+
+    print('-' * 50)
+
+    score /= len(predict)
+
+    print(f'gaussian score: {score:.3f}')
+
+    print('=' * 50)
