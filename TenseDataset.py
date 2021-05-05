@@ -30,10 +30,10 @@ class Index2Word(object):
             word = ''
 
             for c in word_list[1: -1]:
-                word += chr(c + Constant.ALP_TOKEN)
-
                 if c == 2:
                     break
+
+                word += chr(c - Constant.ALP_TOKEN + ord('a'))
 
             result.append(word)
 
