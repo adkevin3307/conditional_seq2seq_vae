@@ -1,10 +1,10 @@
-abandon abandoned
-abet abetting
-begin begins
-expend expends
-sent sends
-split splitting
-flared flare
-functioning function
-functioning functioned
-healing heals
+abandon abandoned 0 3
+abet abetting 0 2
+begin begins 0 1
+expend expends 0 1
+sent sends 3 1
+split splitting 0 2
+flared flare 3 0
+functioning function 2 0
+functioning functioned 2 3
+healing heals 2 1
