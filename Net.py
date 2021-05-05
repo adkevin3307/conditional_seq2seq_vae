@@ -13,8 +13,8 @@ class TenseEncoder(nn.Module):
 
         self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers, bidirectional=bidirectional)
 
-        self.linear_1 = nn.Linear(hidden_size * (2 if bidirectional else 1), Constant.LATENT_SIZE)
-        self.linear_2 = nn.Linear(hidden_size * (2 if bidirectional else 1), Constant.LATENT_SIZE)
+        self.linear_1 = nn.Linear(hidden_size, Constant.LATENT_SIZE)
+        self.linear_2 = nn.Linear(hidden_size, Constant.LATENT_SIZE)
 
     def forward(self, input: torch.Tensor, condition: torch.Tensor) -> tuple:
         output = self.word_embedding(input).transpose(0, 1)
@@ -22,8 +22,8 @@ class TenseEncoder(nn.Module):
 
         output, hidden = self.lstm(output, (hidden, hidden))
 
-        mu = self.linear_1(output)
-        logvar = self.linear_2(output)
+        mu = self.linear_1(hidden[0])
+        logvar = self.linear_2(hidden[0])
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
 
@@ -43,7 +43,7 @@ class TenseEncoder(nn.Module):
 
 
 class TenseDecoder(nn.Module):
-    def __init__(self, output_size: int, hidden_size: int, num_layers: int, max_length: int, bidirectional: bool = True) -> None:
+    def __init__(self, output_size: int, hidden_size: int, num_layers: int, bidirectional: bool = True) -> None:
         super(TenseDecoder, self).__init__()
 
         self.word_embedding = nn.Embedding(output_size, hidden_size)
@@ -51,7 +51,7 @@ class TenseDecoder(nn.Module):
 
         self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers, bidirectional=bidirectional)
 
-        self.linear_1 = nn.Linear((max_length + 2) * Constant.LATENT_SIZE + Constant.CONDITION_EMBEDDING_SIZE, hidden_size)
+        self.linear_1 = nn.Linear(Constant.LATENT_SIZE + Constant.CONDITION_EMBEDDING_SIZE, hidden_size)
         self.linear_2 = nn.Linear(hidden_size * (2 if bidirectional else 1), output_size)
 
     def forward(self, input: torch.Tensor, hidden: tuple) -> tuple:
@@ -70,7 +70,6 @@ class TenseDecoder(nn.Module):
     def _hidden(self, condition: torch.Tensor, latent: torch.Tensor) -> torch.Tensor:
         repeat = self.lstm.num_layers * (2 if self.lstm.bidirectional else 1)
 
-        latent = latent.reshape(1, latent.shape[1], -1).repeat(repeat, 1, 1)
         condition = self.condition_embedding(condition).repeat(repeat, 1, 1)
 
         hidden = torch.cat([latent, condition], dim=-1)
