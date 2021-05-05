@@ -9,7 +9,7 @@ from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 
 import Constant
 from utils import parse
-from TenseDataset import Word2Index, Index2Word, TenseDataset
+from TenseDataset import Word2Index, Index2Word, TenseTrainDataset
 from Net import TenseEncoder, TenseDecoder
 
 
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     num_layers = args.num_layers
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    train_set = TenseDataset('dataset/train.txt', transform=Word2Index(max_length))
+    train_set = TenseTrainDataset('dataset/train.txt', transform=Word2Index(max_length))
     train_loader = DataLoader(train_set, batch_size=32, num_workers=8, shuffle=True)
 
     encoder = TenseEncoder(input_size=Constant.VOCABULARY_SIZE, hidden_size=hidden_size, num_layers=num_layers)
