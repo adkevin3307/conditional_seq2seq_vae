@@ -20,37 +20,42 @@ if __name__ == '__main__':
 
     args = parse()
 
-    max_length = args.max_length
-    hidden_size = args.hidden_size
-    num_layers = args.num_layers
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    train_set = TenseTrainDataset('dataset/train.txt', transform=Word2Index(max_length))
-    test_set = TenseTestDataset('dataset/test.txt', transform=Word2Index(max_length))
+    train_set = TenseTrainDataset('dataset/train.txt', transform=Word2Index(Constant.MAX_LENGTH))
+    test_set = TenseTestDataset('dataset/test.txt', transform=Word2Index(Constant.MAX_LENGTH))
 
     train_loader = DataLoader(train_set, batch_size=32, num_workers=8, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=len(test_set), num_workers=8, shuffle=False)
 
-    encoder = TenseEncoder(input_size=Constant.VOCABULARY_SIZE, hidden_size=hidden_size, num_layers=num_layers)
-    decoder = TenseDecoder(output_size=Constant.VOCABULARY_SIZE, hidden_size=hidden_size, num_layers=num_layers)
+    encoder = TenseEncoder(input_size=Constant.VOCABULARY_SIZE, hidden_size=args.hidden_size, num_layers=args.num_layers)
+    decoder = TenseDecoder(output_size=Constant.VOCABULARY_SIZE, hidden_size=args.hidden_size, num_layers=args.num_layers)
 
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=Constant.LR, momentum=0.9)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=Constant.LR, momentum=0.9)
 
     criterion = nn.CrossEntropyLoss()
 
-    Model.train(
-        {'encoder': encoder, 'decoder': decoder},
-        {'encoder_optimizer': encoder_optimizer, 'decoder_optimizer': decoder_optimizer},
-        criterion,
-        args.epochs,
-        train_loader,
-        args.annealing,
-        args.path
-    )
+    if args.trainable:
+        Model.train(
+            {'encoder': encoder, 'decoder': decoder},
+            {'encoder_optimizer': encoder_optimizer, 'decoder_optimizer': decoder_optimizer},
+            criterion,
+            args.epochs,
+            train_loader,
+            args.annealing,
+            args.path
+        )
 
-    Model.test(
+    Model.evaluate_belu4(
         'weights/encoder_100.weight',
         'weights/decoder_100.weight',
         test_loader
+    )
+
+    Model.evaluate_gaussian(
+        'weights/encoder_100.weight',
+        'weights/decoder_100.weight',
+        'dataset/train.txt',
+        args.num_layers * 2
     )
