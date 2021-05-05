@@ -1,3 +1,4 @@
+import os
 import random
 import numpy as np
 import argparse
@@ -19,6 +20,7 @@ def parse() -> argparse.Namespace:
     parser.add_argument('-s', '--size', type=int, dest='hidden_size', default=256)
     parser.add_argument('-n', '--num_layers', type=int, default=2)
     parser.add_argument('-a', '--annealing', type=str, default='cyclical', choices=['monotonic', 'cyclical'])
+    parser.add_argument('-p', '--path', type=str, default='weights')
 
     args = parser.parse_args()
 
@@ -151,5 +153,5 @@ if __name__ == '__main__':
             print(f'   word: {monitor["word"]}')
             print(f'predict: {monitor["predict"]}')
 
-            torch.save(encoder, f'weights/encoder_{epoch + 1}.weight')
-            torch.save(decoder, f'weights/decoder_{epoch + 1}.weight')
+            torch.save(encoder, os.path.join(args.path, f'encoder_{epoch + 1}.weight'))
+            torch.save(decoder, os.path.join(args.path, f'decoder_{epoch + 1}.weight'))
