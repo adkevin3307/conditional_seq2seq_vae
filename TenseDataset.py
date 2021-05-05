@@ -40,7 +40,7 @@ class Index2Word(object):
         return result
 
 
-class TenseDataset(Dataset):
+class TenseTrainDataset(Dataset):
     def __init__(self, path: str, transform: Callable = None) -> None:
         self.path = path
         self.transform = transform
@@ -61,3 +61,36 @@ class TenseDataset(Dataset):
             word = self.transform(word)
 
         return (word, tense)
+
+
+class TenseTestDataset(Dataset):
+    def __init__(self, path: str, transform: Callable = None) -> None:
+        self.path = path
+        self.transform = transform
+
+        self.data = []
+        self.target = []
+        with open(self.path, 'r') as txt_file:
+            for line in txt_file:
+                token = line.split()
+
+                self.data.append([token[0], token[2]])
+                self.target.append([token[1], token[3]])
+
+    def __len__(self) -> int:
+        assert len(self.data) == len(self.target)
+
+        return len(self.data)
+
+    def __getitem__(self, index: int) -> tuple:
+        input_word, input_tense = self.data[index]
+        output_word, output_tense = self.target[index]
+
+        input_tense = int(input_tense)
+        output_tense = int(output_tense)
+
+        if self.transform:
+            input_word = self.transform(input_word)
+            output_word = self.transform(output_word)
+
+        return ((input_word, input_tense), (output_word, output_tense))
