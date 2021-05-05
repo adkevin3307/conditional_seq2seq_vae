@@ -20,6 +20,26 @@ class Word2Index(object):
         return torch.tensor(result)
 
 
+class Index2Word(object):
+    def __call__(self, sample: torch.Tensor) -> list:
+        result = []
+
+        sample = sample.cpu().numpy()
+
+        for word_list in sample:
+            word = ''
+
+            for c in word_list[1: -1]:
+                word += chr(c + Constant.ALP_TOKEN)
+
+                if c == 2:
+                    break
+
+            result.append(word)
+
+        return result
+
+
 class TenseDataset(Dataset):
     def __init__(self, path: str, transform: Callable = None) -> None:
         self.path = path
@@ -28,18 +48,16 @@ class TenseDataset(Dataset):
         self.data = []
         with open(self.path, 'r') as txt_file:
             for line in txt_file:
-                self.data.append(line.split())
+                self.data.extend(line.split())
 
     def __len__(self) -> int:
         return len(self.data)
 
     def __getitem__(self, index: int) -> tuple:
-        row = index % len(self.data)
-        col = index // len(self.data)
-
-        word = self.data[row][col]
+        word = self.data[index]
+        tense = index % 4
 
         if self.transform:
             word = self.transform(word)
 
-        return (word, col)
+        return (word, tense)
