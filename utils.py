@@ -10,6 +10,7 @@ def parse() -> argparse.Namespace:
     parser.add_argument('-a', '--annealing', type=str, default='cyclical', choices=['monotonic', 'cyclical'])
     parser.add_argument('-p', '--path', type=str, default='weights')
     parser.add_argument('-t', '--trainable', action='store_true')
+    parser.add_argument('-l', '--load', type=str, nargs='+', default=['weights/encoder.weight', 'weights/decoder.weight'])
 
     args = parser.parse_args()
 

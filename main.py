@@ -48,14 +48,14 @@ if __name__ == '__main__':
         )
 
     Model.evaluate_belu4(
-        'weights/encoder_100.weight',
-        'weights/decoder_100.weight',
+        args.load[0],
+        args.load[1],
         test_loader
     )
 
     Model.evaluate_gaussian(
-        'weights/encoder_100.weight',
-        'weights/decoder_100.weight',
+        args.load[0],
+        args.load[1],
         'dataset/train.txt',
         args.num_layers * 2
     )
