@@ -40,18 +40,18 @@ if __name__ == '__main__':
         net = {'encoder': encoder, 'decoder': decoder}
         optimizer = {'encoder_optimizer': encoder_optimizer, 'decoder_optimizer': decoder_optimizer}
         kwargs = {
-            'period': args.period,
-            'verbose_period': 1,
-            'save_period': 10,
+            'period': args.period[0],
+            'verbose_period': args.period[1],
+            'save_period': args.period[2],
             'save': args.save_path,
             'annealing': args.annealing
         }
 
-        Model.train(net, optimizer, criterion, args.epochs, train_set, train_loader, **kwargs)
+        Model.train(net, optimizer, criterion, args.epochs, train_set, train_loader, test_loader, **kwargs)
 
     if args.load:
         encoder = args.load[0]
         decoder = args.load[1]
 
-    Model.evaluate_belu4(encoder, decoder, test_loader)
+    Model.evaluate_bleu4(encoder, decoder, test_loader)
     Model.evaluate_gaussian(encoder, decoder, train_set)

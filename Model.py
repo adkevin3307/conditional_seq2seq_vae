@@ -10,7 +10,7 @@ import Constant
 from TenseDataset import Index2Word, TenseTrainDataset
 
 
-def belu4(predict: torch.Tensor, truth: torch.Tensor) -> float:
+def bleu4(predict: torch.Tensor, truth: torch.Tensor) -> float:
     y_predict = Index2Word()(predict)
     y_truth = Index2Word()(truth)
 
@@ -34,7 +34,7 @@ def generate_gaussian_data(n: int) -> tuple:
     return (latents, tenses)
 
 
-def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: TenseTrainDataset, train_loader: Any, **kwargs) -> None:
+def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: TenseTrainDataset, train_loader: Any, test_loader: Any, **kwargs) -> None:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     encoder = net['encoder']
@@ -60,7 +60,7 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: Te
 
         kld_loss = 0.0
         ce_loss = 0.0
-        belu4_score = 0.0
+        bleu4_score = 0.0
         accuracy = 0
         tf_rate = 0.5
 
@@ -111,26 +111,28 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: Te
                 monitor['word'] = word[0: 5]
                 monitor['pred'] = predict[0: 5]
 
-            temp_belu4_score = belu4(predict, word)
-            belu4_score += temp_belu4_score
+            temp_bleu4_score = bleu4(predict, word)
+            bleu4_score += temp_bleu4_score
 
             rate = (i + 1) / len(train_loader)
             progress = f'Epochs: {(epoch + 1):>{epoch_length}} / {epochs}, [{("=" * int(rate * 20)):<20}] {(rate * 100.0):>6.2f}%'
             status = f'tf_rate: {tf_rate:.3f}, kld_alpha: {kld_alpha:.3f}'
 
-            print(f'\r{progress}, {status}, kld_loss: {temp_kld_loss:.3f}, ce_loss: {temp_ce_loss:.3f}, belu4: {temp_belu4_score:.3f}', end='')
+            print(f'\r{progress}, {status}, kld_loss: {temp_kld_loss:.3f}, ce_loss: {temp_ce_loss:.3f}, bleu4: {temp_bleu4_score:.3f}', end='')
 
         kld_loss /= len(train_loader)
         ce_loss /= len(train_loader)
-        belu4_score /= len(train_loader)
+        bleu4_score /= len(train_loader)
         accuracy /= len(train_loader.dataset)
+        test_bleu4_score = evaluate_bleu4(encoder, decoder, test_loader, verbose=False)
         gaussian_score = evaluate_gaussian(encoder, decoder, train_set, verbose=False)
 
         if (epoch + 1) % verbose_period == 0:
             progress = f'Epochs: {(epoch + 1):>{epoch_length}} / {epochs}, [{("=" * 20)}]'
             status = f'tf_rate: {tf_rate:.3f}, kld_alpha: {kld_alpha:.3f}'
+            additional = f'test_bleu4: {test_bleu4_score:.3f}, gaussian: {gaussian_score:.3f}'
 
-            print(f'\r{progress}, {status}, kld_loss: {kld_loss:.3f}, ce_loss: {ce_loss:.3f}, belu4: {belu4_score:.3f}, gaussian: {gaussian_score:.3f}, accuracy: {accuracy:.3f}')
+            print(f'\r{progress}, {status}, kld_loss: {kld_loss:.3f}, ce_loss: {ce_loss:.3f}, bleu4: {bleu4_score:.3f}, {additional}, accuracy: {accuracy:.3f}')
 
         if (epoch + 1) % save_period == 0:
             monitor['word'] = Index2Word()(monitor['word'])
@@ -142,7 +144,7 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: Te
             torch.save(encoder, os.path.join(path, f'encoder_{epoch + 1}.weight'))
             torch.save(decoder, os.path.join(path, f'decoder_{epoch + 1}.weight'))
 
-        if period == None:
+        if period == 1:
             kld_alpha = 1.0
         elif annealing == 'monotonic':
             kld_alpha = min((epoch + 1) / period, 1.0)
@@ -150,7 +152,7 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: Te
             kld_alpha = min(((epoch + 1) % period) / (period / 2), 1.0)
 
 
-def evaluate_belu4(encoder: Any, decoder: Any, test_loader: Any) -> None:
+def evaluate_bleu4(encoder: Any, decoder: Any, test_loader: Any, verbose: bool = True) -> float:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     if isinstance(encoder, str):
@@ -162,10 +164,11 @@ def evaluate_belu4(encoder: Any, decoder: Any, test_loader: Any) -> None:
     encoder.eval()
     decoder.eval()
 
+    inputs = []
+    targets = []
+    predicts = []
     accuracy = 0
-    belu4_score = 0.0
-
-    print('=' * 50)
+    bleu4_score = 0.0
 
     with torch.no_grad():
         for x_test, y_test in test_loader:
@@ -174,11 +177,11 @@ def evaluate_belu4(encoder: Any, decoder: Any, test_loader: Any) -> None:
 
             latent, _ = encoder(input_word, input_tense)
 
-            input = torch.tensor([[1]]).repeat(1, latent.shape[1]).to(device)
+            input = torch.tensor([[Constant.SOS_TOKEN]]).repeat(1, test_loader.batch_size).to(device)
             hidden = (output_tense, latent)
             predict = []
 
-            for _ in range(latent.shape[1]):
+            for _ in range(test_loader.batch_size):
                 output, hidden = decoder(input, hidden)
                 predict.append(output)
 
@@ -189,29 +192,34 @@ def evaluate_belu4(encoder: Any, decoder: Any, test_loader: Any) -> None:
 
             accuracy += sum(np.array(Index2Word()(output_word)) == np.array(Index2Word()(predict)))
 
-            temp_belu4_score = belu4(predict, output_word)
-            belu4_score += temp_belu4_score
+            temp_bleu4_score = bleu4(predict, output_word)
+            bleu4_score += temp_bleu4_score
 
-            input = Index2Word()(input_word)
-            target = Index2Word()(output_word)
-            predict = Index2Word()(predict)
-
-            for i in range(latent.shape[1]):
-                print(f'input  : {input[i]}')
-                print(f'target : {target[i]}')
-                print(f'predict: {predict[i]}')
-
-                if i < (latent.shape[1] - 1):
-                    print()
+            inputs.extend(Index2Word()(input_word))
+            targets.extend(Index2Word()(output_word))
+            predicts.extend(Index2Word()(predict))
 
     accuracy /= len(test_loader.dataset)
-    belu4_score /= len(test_loader)
+    bleu4_score /= len(test_loader)
 
-    print('-' * 50)
+    if verbose:
+        print('=' * 50)
 
-    print(f'accuracy: {accuracy:.3f}, belu4: {belu4_score:.3f}')
+        for i in range(test_loader.batch_size):
+            print(f'input  : {inputs[i]}')
+            print(f'target : {targets[i]}')
+            print(f'predict: {predicts[i]}')
 
-    print('=' * 50)
+            if i < (test_loader.batch_size - 1):
+                print()
+
+        print('-' * 50)
+
+        print(f'accuracy: {accuracy:.3f}, bleu4: {bleu4_score:.3f}')
+
+        print('=' * 50)
+
+    return bleu4_score
 
 
 def evaluate_gaussian(encoder: Any, decoder: Any, train_set: TenseTrainDataset, verbose: bool = True) -> float:
