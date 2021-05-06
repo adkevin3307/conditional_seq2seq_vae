@@ -5,12 +5,12 @@ def parse() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-e', '--epochs', type=int, default=100)
-    parser.add_argument('-s', '--size', type=int, dest='hidden_size', default=256)
-    parser.add_argument('-n', '--num_layers', type=int, default=2)
+    parser.add_argument('-H', '--hidden_size', type=int, default=256)
     parser.add_argument('-a', '--annealing', type=str, default='cyclical', choices=['monotonic', 'cyclical'])
-    parser.add_argument('-p', '--path', type=str, default='weights')
+    parser.add_argument('-s', '--save_path', type=str, default='weights')
     parser.add_argument('-t', '--trainable', action='store_true')
-    parser.add_argument('-l', '--load', type=str, nargs='+', default=['weights/encoder.weight', 'weights/decoder.weight'])
+    parser.add_argument('-l', '--load', type=str, nargs='+', default=None)
+    parser.add_argument('-p', '--period', type=int, default=None)
 
     args = parser.parse_args()
 

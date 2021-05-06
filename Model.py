@@ -1,4 +1,5 @@
 import os
+import math
 import random
 import numpy as np
 from typing import Any
@@ -6,7 +7,7 @@ import torch
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 
 import Constant
-from TenseDataset import Index2Word
+from TenseDataset import Index2Word, TenseTrainDataset
 
 
 def belu4(predict: torch.Tensor, truth: torch.Tensor) -> float:
@@ -23,8 +24,8 @@ def belu4(predict: torch.Tensor, truth: torch.Tensor) -> float:
     return (score / len(y_truth))
 
 
-def generate_gaussian_data(n: int, shape: int) -> tuple:
-    latents = torch.empty(shape, n, Constant.LATENT_SIZE)
+def generate_gaussian_data(n: int) -> tuple:
+    latents = torch.empty(Constant.NUM_LAYERS * (2 if Constant.BIDIRECTIONAL else 1), n, Constant.LATENT_SIZE)
     latents = latents.normal_(mean=0, std=1)
     latents = torch.repeat_interleave(latents, Constant.CONDITION_CATEGORY, dim=1)
 
@@ -33,7 +34,7 @@ def generate_gaussian_data(n: int, shape: int) -> tuple:
     return (latents, tenses)
 
 
-def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader: Any, annealing: str, path: str) -> None:
+def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: TenseTrainDataset, train_loader: Any, **kwargs) -> None:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     encoder = net['encoder']
@@ -43,14 +44,19 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader:
 
     encoder, decoder = encoder.to(device), decoder.to(device)
 
-    encoder.train()
-    decoder.train()
+    period = kwargs['period']
+    verbose_period = kwargs['verbose_period']
+    save_period = kwargs['save_period']
 
-    period = max(1, epochs // 10)
+    path = kwargs['save']
+    annealing = kwargs['annealing']
     kld_alpha = 1.0 if period == 1 else 0.0
+
     epoch_length = len(str(epochs))
 
     for epoch in range(epochs):
+        encoder.train()
+        decoder.train()
 
         kld_loss = 0.0
         ce_loss = 0.0
@@ -71,7 +77,8 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader:
             temp_kld_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - torch.exp(logvar))
             kld_loss += temp_kld_loss.item()
 
-            tf_rate = max(1.0 - (epoch + 1) / period, 0.5)
+            tf_rate = (math.sin(epoch) / epoch + 0.5) if epoch else 1.0
+            tf_rate = max(min(tf_rate, 1.0), 0.0)
             enable_tf = (random.random() < tf_rate)
 
             input = torch.tensor([[Constant.SOS_TOKEN]]).repeat(1, word.shape[0]).to(device)
@@ -101,8 +108,8 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader:
             decoder_optimizer.step()
 
             if i == monitor_index:
-                monitor['word'] = word[0: 3]
-                monitor['pred'] = predict[0: 3]
+                monitor['word'] = word[0: 5]
+                monitor['pred'] = predict[0: 5]
 
             temp_belu4_score = belu4(predict, word)
             belu4_score += temp_belu4_score
@@ -117,14 +124,15 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader:
         ce_loss /= len(train_loader)
         belu4_score /= len(train_loader)
         accuracy /= len(train_loader.dataset)
+        gaussian_score = evaluate_gaussian(encoder, decoder, train_set, verbose=False)
 
-        if (epoch + 1) % 1 == 0:
+        if (epoch + 1) % verbose_period == 0:
             progress = f'Epochs: {(epoch + 1):>{epoch_length}} / {epochs}, [{("=" * 20)}]'
             status = f'tf_rate: {tf_rate:.3f}, kld_alpha: {kld_alpha:.3f}'
 
-            print(f'\r{progress}, {status}, kld_loss: {kld_loss:.3f}, ce_loss: {ce_loss:.3f}, belu4: {belu4_score:.3f}, accuracy: {accuracy:.3f}')
+            print(f'\r{progress}, {status}, kld_loss: {kld_loss:.3f}, ce_loss: {ce_loss:.3f}, belu4: {belu4_score:.3f}, gaussian: {gaussian_score:.3f}, accuracy: {accuracy:.3f}')
 
-        if (epoch + 1) % 10 == 0:
+        if (epoch + 1) % save_period == 0:
             monitor['word'] = Index2Word()(monitor['word'])
             monitor['pred'] = Index2Word()(monitor['pred'])
 
@@ -134,19 +142,22 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_loader:
             torch.save(encoder, os.path.join(path, f'encoder_{epoch + 1}.weight'))
             torch.save(decoder, os.path.join(path, f'decoder_{epoch + 1}.weight'))
 
-        if period == 1:
+        if period == None:
             kld_alpha = 1.0
         elif annealing == 'monotonic':
-            kld_alpha = min(kld_alpha + (1.0 / period), 1.0)
+            kld_alpha = min((epoch + 1) / period, 1.0)
         elif annealing == 'cyclical':
-            kld_alpha = min(kld_alpha + (1.0 / (period / 2)), min((epoch + 1) % period, 1.0))
+            kld_alpha = min(((epoch + 1) % period) / (period / 2), 1.0)
 
 
-def evaluate_belu4(encoder_weight: str, decoder_weight: str, test_loader: Any) -> None:
+def evaluate_belu4(encoder: Any, decoder: Any, test_loader: Any) -> None:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    encoder = torch.load(encoder_weight)
-    decoder = torch.load(decoder_weight)
+    if isinstance(encoder, str):
+        encoder = torch.load(encoder)
+
+    if isinstance(decoder, str):
+        decoder = torch.load(decoder)
 
     encoder.eval()
     decoder.eval()
@@ -203,55 +214,62 @@ def evaluate_belu4(encoder_weight: str, decoder_weight: str, test_loader: Any) -
     print('=' * 50)
 
 
-def evaluate_gaussian(encoder_weight: str, decoder_weight: str, dataset: str, shape: int) -> None:
+def evaluate_gaussian(encoder: Any, decoder: Any, train_set: TenseTrainDataset, verbose: bool = True) -> float:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    encoder = torch.load(encoder_weight)
-    decoder = torch.load(decoder_weight)
+    if isinstance(encoder, str):
+        encoder = torch.load(encoder)
+
+    if isinstance(decoder, str):
+        decoder = torch.load(decoder)
 
     encoder.eval()
     decoder.eval()
 
-    latents, tenses = generate_gaussian_data(100, shape)
+    latents, tenses = generate_gaussian_data(100)
     latents, tenses = latents.to(device), tenses.to(device)
 
     input = torch.tensor([[1]]).repeat(1, latents.shape[1]).to(device)
     hidden = (tenses, latents)
 
-    predict = []
+    predicts = []
 
     for _ in range(latents.shape[1]):
         output, hidden = decoder(input, hidden)
-        predict.append(output)
+        predicts.append(output)
 
         input = torch.argmax(output, dim=-1).type(torch.long)
 
-    predict = torch.cat(predict)
-    predict = torch.argmax(predict, dim=-1).transpose(0, 1)
-
-    predict = Index2Word()(predict)
-
-    predict = [predict[i: (i + 4)] for i in range(len(predict) // 4)]
-
-    print('=' * 50)
-
-    words = []
-    with open(dataset, 'r') as txt_file:
-        for line in txt_file:
-            words.append(line.split())
+    predicts = torch.cat(predicts)
+    predicts = torch.argmax(predicts, dim=-1).transpose(0, 1)
+    predicts = Index2Word()(predicts)
 
     score = 0
-    for word in words:
-        for y in predict:
-            if word == y:
-                print(word)
+    words = []
+    corrects = []
 
+    for i in range(len(train_set)):
+        words.append(train_set[i])
+
+    predicts = [predicts[i: (i + 4)] for i in range(len(predicts) // 4)]
+    words = [words[i: (i + 4)] for i in range(len(words) // 4)]
+
+    for word in words:
+        for predict in predicts:
+            if word == predict:
+                corrects.append(word)
                 score += 1
 
-    print('-' * 50)
+    score /= len(predicts)
 
-    score /= len(predict)
+    if verbose:
+        print('=' * 50)
 
-    print(f'gaussian score: {score:.3f}')
+        for correct in corrects:
+            print(correct)
 
-    print('=' * 50)
+        print('-' * 50)
+        print(f'gaussian score: {score:.3f}')
+        print('=' * 50)
+
+    return score

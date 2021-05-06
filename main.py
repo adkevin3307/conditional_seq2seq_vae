@@ -28,8 +28,8 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size=32, num_workers=8, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=len(test_set), num_workers=8, shuffle=False)
 
-    encoder = TenseEncoder(input_size=Constant.VOCABULARY_SIZE, hidden_size=args.hidden_size, num_layers=args.num_layers)
-    decoder = TenseDecoder(output_size=Constant.VOCABULARY_SIZE, hidden_size=args.hidden_size, num_layers=args.num_layers)
+    encoder = TenseEncoder(input_size=Constant.VOCABULARY_SIZE, hidden_size=args.hidden_size)
+    decoder = TenseDecoder(output_size=Constant.VOCABULARY_SIZE, hidden_size=args.hidden_size)
 
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=Constant.LR, momentum=0.9)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=Constant.LR, momentum=0.9)
@@ -37,25 +37,21 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
 
     if args.trainable:
-        Model.train(
-            {'encoder': encoder, 'decoder': decoder},
-            {'encoder_optimizer': encoder_optimizer, 'decoder_optimizer': decoder_optimizer},
-            criterion,
-            args.epochs,
-            train_loader,
-            args.annealing,
-            args.path
-        )
+        net = {'encoder': encoder, 'decoder': decoder}
+        optimizer = {'encoder_optimizer': encoder_optimizer, 'decoder_optimizer': decoder_optimizer}
+        kwargs = {
+            'period': args.period,
+            'verbose_period': 1,
+            'save_period': 10,
+            'save': args.save_path,
+            'annealing': args.annealing
+        }
 
-    Model.evaluate_belu4(
-        args.load[0],
-        args.load[1],
-        test_loader
-    )
+        Model.train(net, optimizer, criterion, args.epochs, train_set, train_loader, **kwargs)
 
-    Model.evaluate_gaussian(
-        args.load[0],
-        args.load[1],
-        'dataset/train.txt',
-        args.num_layers * 2
-    )
+    if args.load:
+        encoder = args.load[0]
+        decoder = args.load[1]
+
+    Model.evaluate_belu4(encoder, decoder, test_loader)
+    Model.evaluate_gaussian(encoder, decoder, train_set)
