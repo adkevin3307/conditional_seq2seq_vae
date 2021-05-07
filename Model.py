@@ -1,10 +1,10 @@
 import os
-import math
 import random
 import logging
 import numpy as np
 from typing import Any
 import torch
+import torch.optim as optim
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 
 import Constant
@@ -189,9 +189,26 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: An
 
     path = kwargs['save']
     annealing = kwargs['annealing']
+
+    tf_rate = 0.5
+    tf_rate_warm = 100
+    tf_rate_decay = 0.0005
     kld_alpha = 1.0 if period == 1 else 0.0
 
+    logger.debug(f'tf_rate: {tf_rate}')
+    logger.debug(f'tf_rate_warm: {tf_rate_warm}')
+    logger.debug(f'tf_rate_decay: {tf_rate_decay}')
+    logger.debug(f'kld_alpha: {kld_alpha}')
+
     epoch_length = len(str(epochs))
+
+    step_size = 500
+    gamma = 0.9
+
+    logger.debug(f'scheduler, step_size: {step_size}, gamma: {gamma}')
+
+    encoder_scheduler = optim.lr_scheduler.StepLR(encoder_optimizer, step_size, gamma)
+    decoder_scheduler = optim.lr_scheduler.StepLR(decoder_optimizer, step_size, gamma)
 
     for epoch in range(epochs):
         encoder.train()
@@ -200,10 +217,11 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: An
         kld_loss = 0.0
         ce_loss = 0.0
         bleu4_score = 0.0
-        tf_rate = 0.5
 
         monitor = {}
         monitor_index = random.randint(0, len(train_loader) - 1)
+
+        tf_rate = 1.0 if epoch < tf_rate_warm else max(tf_rate - tf_rate_decay, 0.5)
 
         for i, (word, tense) in enumerate(train_loader):
             word, tense = word.to(device), tense.to(device)
@@ -212,11 +230,9 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: An
             decoder_optimizer.zero_grad()
 
             latent, (mu, logvar) = encoder(word, tense)
-            temp_kld_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - torch.exp(logvar))
+            temp_kld_loss = -1.0 * torch.mean(1 + logvar - mu.pow(2) - torch.exp(logvar))
             kld_loss += temp_kld_loss.item()
 
-            tf_rate = (math.sin(epoch) / epoch + 0.5) if epoch else 1.0
-            tf_rate = max(min(tf_rate, 1.0), 0.0)
             enable_tf = (random.random() < tf_rate)
 
             input = torch.tensor([[Constant.SOS_TOKEN]]).repeat(1, word.shape[0]).to(device)
@@ -275,13 +291,14 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: An
 
             print(f'\r{progress}, {status}, kld_loss: {kld_loss:.3f}, ce_loss: {ce_loss:.3f}, bleu4: {bleu4_score:.3f}, {additional}')
 
-        if (epoch + 1) % save_period == 0:
+        if (epoch + 1) % (verbose_period * 10) == 0:
             monitor['word'] = Index2Word()(monitor['word'])
             monitor['pred'] = Index2Word()(monitor['pred'])
 
             print(f'word: {", ".join(monitor["word"])}')
             print(f'pred: {", ".join(monitor["pred"])}')
 
+        if (epoch + 1) % save_period == 0:
             torch.save(encoder, os.path.join(path, f'encoder_{epoch + 1}.weight'))
             torch.save(decoder, os.path.join(path, f'decoder_{epoch + 1}.weight'))
 
@@ -291,3 +308,6 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: An
             kld_alpha = min((epoch + 1) / period, 1.0)
         elif annealing == 'cyclical':
             kld_alpha = min(((epoch + 1) % period) / (period / 2), 1.0)
+
+        encoder_scheduler.step()
+        decoder_scheduler.step()
