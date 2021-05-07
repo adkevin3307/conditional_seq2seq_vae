@@ -1,6 +1,7 @@
 import random
 import logging
 import numpy as np
+from datetime import datetime
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,7 +20,7 @@ logger.setLevel(logging.DEBUG)
 log_file_format = logging.Formatter('%(asctime)s [%(name)s - %(levelname)s] %(message)s')
 log_console_format = logging.Formatter('%(message)s')
 
-file_handler = logging.FileHandler('train.log')
+file_handler = logging.FileHandler(f'{datetime.now().strftime("%Y-%m-%d_%H:%M:%S")}.log')
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(log_file_format)
 
