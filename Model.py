@@ -1,6 +1,7 @@
 import os
 import math
 import random
+import logging
 import numpy as np
 from typing import Any
 import torch
@@ -8,6 +9,8 @@ from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 
 import Constant
 from TenseDataset import Index2Word, TenseTrainDataset
+
+logger = logging.getLogger('__main__.Model')
 
 
 def bleu4(predict: torch.Tensor, truth: torch.Tensor) -> float:
@@ -78,16 +81,16 @@ def evaluate_bleu4(encoder: Any, decoder: Any, test_loader: Any, verbose: bool =
         print('=' * 50)
 
         for i in range(test_loader.batch_size):
-            print(f'input  : {inputs[i]}')
-            print(f'target : {targets[i]}')
-            print(f'predict: {predicts[i]}')
+            logger.info(f'input  : {inputs[i]}')
+            logger.info(f'target : {targets[i]}')
+            logger.info(f'predict: {predicts[i]}')
 
             if i < (test_loader.batch_size - 1):
                 print()
 
         print('-' * 50)
 
-        print(f'accuracy: {accuracy:.3f}, bleu4: {bleu4_score:.3f}')
+        logger.info(f'accuracy: {accuracy:.3f}, bleu4: {bleu4_score:.3f}')
 
         print('=' * 50)
 
@@ -157,14 +160,14 @@ def evaluate_gaussian(encoder: Any, decoder: Any, train_set: TenseTrainDataset, 
 
     if verbose:
         print('=' * 50)
-        print(f'predict words: {len(predicts)}')
+        logger.info(f'predict words: {len(predicts)}')
         print('-' * 50)
 
         for correct in corrects:
-            print(correct)
+            logger.info(correct)
 
         print('-' * 50)
-        print(f'gaussian score: {score:.3f}')
+        logger.info(f'gaussian score: {score:.3f}')
         print('=' * 50)
 
     return score
@@ -259,6 +262,11 @@ def train(net: dict, optimizer: dict, criterion: Any, epochs: int, train_set: An
         bleu4_score /= len(train_loader)
         test_bleu4_score = evaluate_bleu4(encoder, decoder, test_loader, verbose=False)
         gaussian_score = evaluate_gaussian(encoder, decoder, train_set, verbose=False)
+
+        logger.debug(f'Epoch: {epoch + 1}')
+        logger.debug(f'tf_rate: {tf_rate}, kld_alpha: {kld_alpha}')
+        logger.debug(f'kld_loss: {kld_loss}, ce_loss: {ce_loss}, bleu4: {bleu4_score}')
+        logger.debug(f'test_bleu4: {test_bleu4_score}, gaussian: {gaussian_score}')
 
         if (epoch + 1) % verbose_period == 0:
             progress = f'Epochs: {(epoch + 1):>{epoch_length}} / {epochs}, [{("=" * 20)}]'
